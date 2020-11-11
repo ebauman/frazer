@@ -42,15 +42,23 @@ f.RegisterHandler(GetFoo, nil)
 The second argument to `RegisterHandler` is an optional `HandlerOptions` type which you can use to specify
 HTTP method, prefix, or path. 
 
+In this case, the handler would be registered at `/foo` with the http method `GET`.
+
 You can also register a server via...
 
 ```go
+-- github.com/your/package/api/v1/foo/foo.go --
+package foo
+
 type Server struct {
 }
 
 func (s *Server) CreateFoo(ctx context.Context, f Foo) (Foo, error) {
     return f, nil
 }
+
+-- github.com/your/package --
+package main
 
 func main() {
 ...
@@ -59,6 +67,9 @@ s := &Server{}
 f.RegisterServer(s, nil)
 }
 ```
+
+In this case, the handler is registered at `/api/v1/foo` with the http method `POST`. This is because internally, 
+'Create' maps to 'POST' for HTTP. 
 
 The second argument to `RegisterServer` is an optional `ServerOptions` where you can define http prefix, 
 or a map of string function names to their `HandlerOptions`. One may also register these `HandlerOptions` by
