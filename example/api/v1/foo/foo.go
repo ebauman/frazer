@@ -3,16 +3,16 @@ package foo
 import (
 	"context"
 	"fmt"
-	"github.com/ebauman/frazer/apiserver"
 	"github.com/ebauman/frazer/example/types"
+	"github.com/ebauman/frazer/frazer"
 )
 
 type Server struct {
 }
 
 // Example of a handler instantiator.
-func (s *Server) Update() (*apiserver.HandlerOptions, func(context.Context, types.Foo) (types.Foo, error)) {
-	h := &apiserver.HandlerOptions{
+func (s *Server) Update() (*frazer.HandlerOptions, func(context.Context, types.Foo) (types.Foo, error)) {
+	h := &frazer.HandlerOptions{
 		Path:   "/eamon/update/foo",
 	}
 
