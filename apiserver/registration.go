@@ -96,7 +96,6 @@ func (a *APIServer) registerServerHandler(handlerName string, handler reflect.Va
 	var path string
 	var prefix string
 	var method methods.HTTPMethod
-	var err error
 
 	if options != nil {
 		path = options.Path
@@ -105,7 +104,13 @@ func (a *APIServer) registerServerHandler(handlerName string, handler reflect.Va
 	}
 
 	if len(path) == 0 || len(method) == 0 {
-		path, method, err = decodePathAndMethod(handlerName)
+		p, m, err := decodePathAndMethod(handlerName)
+		if len(path) == 0 {
+			path = p
+		}
+		if len(method) == 0 {
+			method = m
+		}
 		if err != nil {
 			panic(fmt.Sprintf("could not decode method: %v", err))
 		}
@@ -199,8 +204,7 @@ func (a *APIServer) RegisterServer(server interface{}, options *ServerOptions) {
 				fmt.Println("cannot assert interface{} to *HandlerOptions")
 			}
 
-			hIntf := res[0].Interface()         // convert handler to interface{}
-			a.RegisterHandler(hIntf, hOptsIntf) // register handler
+			a.registerServerHandler(reflect.TypeOf(server).Method(i).Name, res[1], hOptsIntf) // register handler
 		}
 
 		// we are not dealing with a handler instantiator. are we dealing with a handler?
