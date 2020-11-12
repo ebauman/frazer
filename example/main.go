@@ -29,10 +29,10 @@ func main() {
 
 	a := apiserver.New(&apiserver.FrazerOptions{Package: "github.com/ebauman/frazer/example"})
 
-	//a.RegisterHandler(ListFoos, &apiserver.HandlerOptions{
-	//	Path:   "/api/v1/foos",
-	//	Method: "GET",
-	//})
+	a.RegisterHandler(ListFoos, &apiserver.HandlerOptions{
+		Path:   "/api/v1/foos",
+		Method: "GET",
+	})
 
 	a.RegisterHandler(CreateFoo, &apiserver.HandlerOptions{
 		Prefix: "/api/v1",
