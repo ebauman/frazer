@@ -55,6 +55,7 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 	queryMap, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		handleError(w, r, err)
+		return
 	}
 
 	ctx := r.Context() // base context is the request, handlers can then use it for cancellation
@@ -70,15 +71,28 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 	// reflected pointer
 	newP := obj.Interface()
 
-	if r.Method != "GET" {
-		data, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			handleError(w, r, err)
-		}
+	// figure out how to handle situations where no arguments
+	// are required. do we have a handler that only accepts
+	// context? e.g. func(context)(interface{}, error)
+	// or do we force the user to specify func(context, _ interface{})?
 
+	// also what about situations where there is no return value?
+	// is that ever an occurrence? e.g.
+	// func(context, interface{}) (error)
+
+	// for the marshalling of the body, probably perform ioutil.ReadAll(r.Body)
+	// and then depending on the len(data), marshal or not.
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		handleError(w, r, err)
+		return
+	}
+
+	if len(data) > 0 {
 		err = json.Unmarshal(data, newP)
 		if err != nil {
 			handleError(w, r, err)
+			return
 		}
 	}
 
@@ -88,31 +102,33 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 		params[1] = obj.Elem()
 	}
 
-	defer recoverHandlerCall()
+	// recovery func, but defined inline so as to use w, r
+	defer func() {
+		if rr := recover(); rr != nil {
+			handleError(w, r, frazerHttp.New(500, "internal error while calling http handler"))
+		}
+	}()
 
 	results := handler.Call(params)
 	// results[0] should be interface{}, results[1] should be error
 	if len(results) < 2 {
-		panic(fmt.Sprintf("did not get expected results from handler call, received %v", results))
+		err = frazerHttp.New(500, "handler did not return as expected")
+		handleError(w, r, err)
+		return
 	}
 
 	if reflect.TypeOf(results[1]).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
 		if !results[0].IsNil() {
 			err, ok := results[1].Interface().(error)
 			if !ok {
-				panic("could not turn non-nil error into error type")
+				err = frazerHttp.New(500, "could not convert non-nil error into error type")
 			}
 			handleError(w, r, err)
+			return
 		}
 	}
 
 	handleData(w, r, results[0].Interface())
-}
-
-func recoverHandlerCall() {
-	if r := recover(); r != nil {
-		fmt.Println("recovered from failed handler call ", r)
-	}
 }
 
 func handleData(w http.ResponseWriter, r *http.Request, data interface{}) {
@@ -150,6 +166,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	eb, err := json.Marshal(e)
 	if err != nil {
 		marshalError(w, r, err)
+		return
 	}
 
 	w.WriteHeader(code)

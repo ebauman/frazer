@@ -9,35 +9,20 @@ import (
 	"github.com/ebauman/frazer/frazer"
 )
 
-//func main() {
-//	arguments := args.Default()
-//	arguments.InputDirs = []string{"github.com/ebauman/frazer/example/handlers"}
-//	if err := arguments.Execute(
-//		generators.NameSystems(),
-//		generators.DefaultNameSystem(),
-//		generators.Packages,
-//	); err != nil {
-//		fmt.Printf("error: %v", err)
-//		os.Exit(1)
-//	}
-//
-//	fmt.Printf("completed successfully")
-//}
-
 func main() {
 	host := "localhost"
 	port := 8080
 
 	a := apiserver.New(&frazer.FrazerOptions{Package: "github.com/ebauman/frazer/example"})
 
-	a.RegisterHandler(ListFoos, &frazer.HandlerOptions{
-		Path:   "/api/v1/foos",
-		Method: "GET",
-	})
-
-	a.RegisterHandler(CreateFoo, &frazer.HandlerOptions{
-		Prefix: "/api/v1",
-	})
+	//a.RegisterHandler(ListFoos, &frazer.HandlerOptions{
+	//	Path:   "/api/v1/foos",
+	//	Method: "GET",
+	//})
+	//
+	//a.RegisterHandler(CreateFoo, &frazer.HandlerOptions{
+	//	Prefix: "/api/v1",
+	//})
 
 	s := foo.Server{}
 
