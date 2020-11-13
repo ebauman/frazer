@@ -21,9 +21,11 @@ func (s *Server) Update() (*frazer.HandlerOptions, func(context.Context, types.F
 	}
 }
 
-// Example of a plain server handler. Added "Calling SERVER" to demonstrate priority of handler calls
-// when two paths are registered, one with RegisterHandler, one with RegisterServer (handler takes priority)
+// Example of a plain server handler. Added "Calling SERVER" to demonstrate the receiving handler
+// when two handlers with the same handle signature (path + method) are created
+// (the latter takes priority)
 func (s *Server) Create(ctx context.Context, f *types.Foo) (*types.Foo, error) {
 	fmt.Println("Calling SERVER")
 	return f, nil
 }
+
