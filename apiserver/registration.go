@@ -3,14 +3,12 @@ package apiserver
 import (
 	"fmt"
 	"github.com/ebauman/frazer/frazer"
-	"github.com/ebauman/frazer/http"
 	"github.com/ebauman/frazer/typecheckers"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
 )
-
 
 func (a *APIServer) RegisterHandler(handler interface{}, options *frazer.HandlerOptions) {
 	if !typecheckers.IsHandler(reflect.TypeOf(handler)) {
@@ -25,7 +23,7 @@ func (a *APIServer) RegisterHandler(handler interface{}, options *frazer.Handler
 func (a *APIServer) registerServerHandler(handlerName string, handler reflect.Value, options *frazer.HandlerOptions) {
 	var path string
 	var prefix string
-	var method http.Method
+	var method string
 
 	if options != nil {
 		path = options.Path
@@ -52,15 +50,81 @@ func (a *APIServer) registerServerHandler(handlerName string, handler reflect.Va
 		path = prefix
 	}
 
+	if handler.Type().NumIn() > 2 {
+		// there are path parameters in play
+		for i := 2; i < handler.Type().NumIn(); i++ {
+			paramName := fmt.Sprintf("%s%d", handler.Type().In(i).Name(), i)
+			path = fmt.Sprintf("%s/{%s}", path, paramName)
+		}
+	}
+
 	_, exists := a.handlers[path]
 	if !exists {
-		a.handlers[path] = map[http.Method]reflect.Value{}
+		a.handlers[path] = map[string]reflect.Value{}
 	}
 
 	a.handlers[path][method] = handler
+	a.router.HandleFunc(path, a.dispatch)
+
+	a.registerSchema(handler.Type().In(1))  // input schema
+	a.registerSchema(handler.Type().Out(0)) // output schema
 }
 
-func decodePathAndMethod(handlerName string) (string, http.Method, error) {
+func (a *APIServer) registerSchema(t reflect.Type) {
+	if t.Kind() == reflect.Slice || t.Kind() == reflect.Ptr || t.Kind() == reflect.Map {
+		t = t.Elem()
+	}
+
+	if t.Kind() == reflect.Interface {
+		return // can't create a schema for interface{}
+	}
+
+	pkgPath := t.PkgPath()
+	name := t.Name()
+
+	var fqsn string // fully qualified schema name
+	if len(pkgPath) > 0 {
+		fqsn = fmt.Sprintf("%s/%s", pkgPath, name)
+	} else {
+		fqsn = name
+	}
+
+	fqsn = strings.ToLower(fqsn)
+	name = strings.ToLower(name)
+
+	// register the schema
+	a.schemas[fqsn] = t
+	a.registerShortName(fqsn, name)
+}
+
+func (a *APIServer) registerShortName(fullName string, inputShortName string) {
+	resolved := false
+	i := 2
+	var shortName = inputShortName
+	for !resolved {
+		if fn, exists := a.schemaNames[shortName]; exists {
+			// this means that a short name registration exists
+			// if this matches our full name, we're done - no need to double register
+			if fn == fullName {
+				return
+			}
+
+			// reaching here means that a shortname registration exists for this value of shortName
+			// and the full name values did not match
+			// so increment i and continue
+			shortName = fmt.Sprintf("%s%d", inputShortName, i)
+			i++
+			continue
+		}
+
+		// reaching here means that a shortname registration did not exist
+		// for this, so go ahead and register
+		a.schemaNames[shortName] = fullName
+		resolved = true
+	}
+}
+
+func decodePathAndMethod(handlerName string) (string, string, error) {
 	if strings.Contains(handlerName, ".") {
 		// handlerName could come in as e.g. main.ListFoo, so fix that
 		handlerName = strings.Split(handlerName, ".")[1]
@@ -73,12 +137,12 @@ func decodePathAndMethod(handlerName string) (string, http.Method, error) {
 
 	if len(res) < 3 {
 		// there was a problem, should always be three even if the method name is simple (e.g. "Get" vs "GetFoo")
-		return "", http.Get, fmt.Errorf("invalid handler name, incompatible with autodetection: %s", handlerName)
+		return "", "", fmt.Errorf("invalid handler name, incompatible with autodetection: %s", handlerName)
 	}
 
-	method, err := http.FromString(res[1])
+	method, err := frazer.MethodFromString(res[1])
 	if err != nil {
-		return "", http.Get, fmt.Errorf("could not autodetect http method for handler %s", handlerName)
+		return "", "", fmt.Errorf("could not autodetect http method for handler %s", handlerName)
 	}
 
 	path := fmt.Sprintf("%s", strings.ToLower(res[2]))
@@ -148,5 +212,3 @@ func (a *APIServer) RegisterServer(server interface{}, options *frazer.ServerOpt
 		}
 	}
 }
-
-

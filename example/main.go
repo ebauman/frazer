@@ -9,20 +9,24 @@ import (
 	"github.com/ebauman/frazer/frazer"
 )
 
+type Bar struct {
+
+}
+
 func main() {
 	host := "localhost"
 	port := 8080
 
 	a := apiserver.New(&frazer.FrazerOptions{Package: "github.com/ebauman/frazer/example"})
 
-	//a.RegisterHandler(ListFoos, &frazer.HandlerOptions{
-	//	Path:   "/api/v1/foos",
-	//	Method: "GET",
-	//})
-	//
-	//a.RegisterHandler(CreateFoo, &frazer.HandlerOptions{
-	//	Prefix: "/api/v1",
-	//})
+	a.RegisterHandler(ListFoos, &frazer.HandlerOptions{
+		Path:   "/api/v1/foos",
+		Method: "GET",
+	})
+
+	a.RegisterHandler(CreateFoo, &frazer.HandlerOptions{
+		Prefix: "/api/v1",
+	})
 
 	s := foo.Server{}
 
@@ -43,7 +47,7 @@ func ListFoos(ctx context.Context, _ interface{}) ([]types.Foo, error) {
 	}, nil
 }
 
-func CreateFoo(ctx context.Context, f *types.Foo) (types.Foo, error) {
+func CreateFoo(ctx context.Context, f *types.Foo) (Bar, error) {
 	fmt.Println("calling HANDLER")
-	return *f, nil
+	return Bar{}, nil
 }

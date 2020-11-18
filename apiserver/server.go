@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ebauman/frazer/frazer"
-	frazerHttp "github.com/ebauman/frazer/http"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,13 +15,20 @@ import (
 
 type APIServer struct {
 	pkg      string
-	handlers map[string]map[frazerHttp.Method]reflect.Value
+	handlers map[string]map[string]reflect.Value
+	schemas  map[string]reflect.Type
+	schemaNames map[string]string
+	// handlers key (string) is http method as defined in https://github.com/golang/go/blob/master/src/net/http/method.go
+	router *mux.Router
 }
 
-func New(opts *frazer.FrazerOptions) *APIServer {
+func New(opts *frazer.FrazerOptions, ) *APIServer {
 	a := &APIServer{}
-	handlers := make(map[string]map[frazerHttp.Method]reflect.Value)
+	a.router = mux.NewRouter()
+	handlers := make(map[string]map[string]reflect.Value)
 	a.handlers = handlers
+	a.schemas = make(map[string]reflect.Type)
+	a.schemaNames = make(map[string]string)
 	if opts != nil {
 		if len(opts.Package) > 0 {
 			a.pkg = opts.Package
@@ -30,26 +37,35 @@ func New(opts *frazer.FrazerOptions) *APIServer {
 	return a
 }
 
-func (a *APIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.dispatch(w, r)
-}
-
 func (a *APIServer) dispatch(w http.ResponseWriter, r *http.Request) {
-	if item, exists := a.handlers[r.URL.Path]; exists {
-		m, _ := frazerHttp.FromString(r.Method)
+	rt := mux.CurrentRoute(r)
+	p, err := rt.GetPathTemplate()
+	if err != nil {
+		handleError(w, r, frazer.NewError(http.StatusBadRequest, "invalid path"))
+		return
+	}
+	if item, exists := a.handlers[p]; exists {
+		m, _ := frazer.MethodFromString(r.Method)
 		if h, exists := item[m]; exists {
 			a.handle(w, r, h)
 		}
 	} else {
-		handleError(w, r, frazerHttp.New(400, "not found"))
+		handleError(w, r, frazer.NewError(400, "not found"))
 	}
 }
 
 func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler reflect.Value) {
 	var handlerType = handler.Type()
 
-	// a valid function should have the signature
-	// func(ctx context.Context, body interface{})
+	// get any path parameters
+	pathParams := mux.Vars(r)
+	// get the number of inputs to the handler
+	// and if inputs-2 (accounting for context, and body) does not equal path params
+	// there is a problem and we should bail
+	if handler.Type().NumIn()-2 != len(pathParams) {
+		handleError(w, r, frazer.NewError(http.StatusInternalServerError, "invalid number of path parameter defined in handler"))
+		return
+	}
 
 	// construct a context and arguments, send into the handler.
 	queryMap, err := url.ParseQuery(r.URL.RawQuery)
@@ -58,10 +74,10 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 		return
 	}
 
-	ctx := r.Context() // base context is the request, handlers can then use it for cancellation
+	ctx := r.Context()                                 // base context is the request, handlers can then use it for cancellation
 	ctx = context.WithValue(ctx, "queryMap", queryMap) // add the query map
 
-	params := make([]reflect.Value, 2)
+	params := make([]reflect.Value, handler.Type().NumIn())
 	params[0] = reflect.ValueOf(ctx)
 
 	// get the type associated with the second parameter
@@ -102,17 +118,26 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 		params[1] = obj.Elem()
 	}
 
+	if len(params) > 2 {
+		// there are path parameters
+		i := 2
+		for _, v := range pathParams {
+			params[i] = reflect.ValueOf(v)
+			i++
+		}
+	}
+
 	// recovery func, but defined inline so as to use w, r
 	defer func() {
 		if rr := recover(); rr != nil {
-			handleError(w, r, frazerHttp.New(500, "internal error while calling http handler"))
+			handleError(w, r, frazer.NewError(500, "internal error while calling http handler"))
 		}
 	}()
 
 	results := handler.Call(params)
 	// results[0] should be interface{}, results[1] should be error
 	if len(results) < 2 {
-		err = frazerHttp.New(500, "handler did not return as expected")
+		err = frazer.NewError(500, "handler did not return as expected")
 		handleError(w, r, err)
 		return
 	}
@@ -121,7 +146,7 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 		if !results[0].IsNil() {
 			err, ok := results[1].Interface().(error)
 			if !ok {
-				err = frazerHttp.New(500, "could not convert non-nil error into error type")
+				err = frazer.NewError(500, "could not convert non-nil error into error type")
 			}
 			handleError(w, r, err)
 			return
@@ -132,19 +157,17 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 }
 
 func handleData(w http.ResponseWriter, r *http.Request, data interface{}) {
-	// build response
-	// is data a collection?
-	// just shit out json for now
 	j, err := json.Marshal(data)
 	if err != nil {
 		marshalError(w, r, err)
 	}
 
+	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(200)
 	_, _ = w.Write(j)
 }
 
-func marshalError(w http.ResponseWriter, r *http.Request, err error) {
+func marshalError(w http.ResponseWriter, _ *http.Request, err error) {
 	w.WriteHeader(500)
 	_, writeErr := w.Write([]byte(fmt.Sprintf("error while encoding response: %s", err)))
 	if writeErr != nil {
@@ -154,14 +177,14 @@ func marshalError(w http.ResponseWriter, r *http.Request, err error) {
 
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	var code int
-	if ee, ok := err.(frazerHttp.Error); ok {
+	if ee, ok := err.(frazer.Error); ok {
 		code = ee.Code()
 	} else {
 		code = 500
 	}
 
 	// build error
-	e := frazer.NewError(uint(code), "error", err.Error(), err.Error())
+	e := frazer.NewErrorResponse(uint(code), "error", err.Error(), err.Error())
 
 	eb, err := json.Marshal(e)
 	if err != nil {
@@ -174,6 +197,6 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (a *APIServer) ListenAndServe(host string, port int) error {
-	err := http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), a)
+	err := http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), a.router)
 	return err
 }

@@ -3,15 +3,19 @@ package typecheckers
 import "reflect"
 
 // A handler has the signature
-// func(context.Context, interface{}) (interface{}, error)
+// func(context.Context, interface{}, ...string) (interface{}, error)
+// first argument is context
+// second argument is the body of the request
+// third...n arguments are path parameters
+// omitting the third...n arguments results in no query parameters being added to the path
 func IsHandler(t reflect.Type) bool {
 	// A handler must be a function
 	if t.Kind() != reflect.Func {
 		return false
 	}
 
-	// A handler must take two arguments
-	if t.NumIn() != 2 {
+	// A handler must take at least two arguments
+	if t.NumIn() < 2 {
 		return false
 	}
 
@@ -31,10 +35,23 @@ func IsHandler(t reflect.Type) bool {
 		return false
 	}
 
+	// A handler's third..n arguments, if present, must be strings
+	for i := 2; i < t.NumIn(); i++ {
+		if t.In(i).Kind() != reflect.String {
+			return false
+		}
+	}
+
 	// A handler's first output can be anything except for a func, we cannot
 	// marshal a func into JSON
 	if t.Out(0).Kind() == reflect.Func {
 		return false
+	} else if t.Out(0).Kind() == reflect.Ptr {
+		if t.Out(0).Elem().Kind() == reflect.Ptr || t.Out(0).Elem().Kind() == reflect.Func {
+			// this allows for returning pointer objects so long as they aren't
+			// pointing at another pointer or a func
+			return false
+		}
 	}
 
 	// A handler's second output must be an error
