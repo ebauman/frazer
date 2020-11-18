@@ -1,4 +1,4 @@
-# Frazer - EXPERIMENTAL, DO NOT USE
+# Frazer - EXPERIMENTAL
 
 Frazer is an experimental REST API server. 
 
