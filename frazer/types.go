@@ -1,36 +1,10 @@
 package frazer
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
 )
-
-const (
-	// plugin stages
-	PluginBeforeDispatch PluginStage = "BeforeDispatch"
-	PluginBeforeHandle   PluginStage = "BeforeHandle"
-	PluginBeforeResponse PluginStage = "BeforeResponse"
-	PluginResponse       PluginStage = "Response"
-	PluginBeforeError    PluginStage = "BeforeError"
-	PluginError          PluginStage = "Error"
-)
-
-type PluginStage string
-
-type HandlePlugin func(ctx context.Context, data interface{}, params ...string)
-
-type ResponseHandler func(w http.ResponseWriter, r *http.Request, data interface{})
-type ErrorHandler func(w http.ResponseWriter, r *http.Request, err error)
-
-type BeforeHandle func(next HandlePlugin) HandlePlugin
-
-
-type PluginOptions struct {
-	Paths      []string // follows the rules of gorilla/mux for path matching
-	Methods    []string
-}
 
 type HandlerOptions struct {
 	Path   string
