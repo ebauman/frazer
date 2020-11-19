@@ -2,5 +2,3 @@
 .idea/
 Thumbs.db
 
-# ignore the executable if its generated
-frazer
