@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ebauman/frazer/apiserver"
 	"github.com/ebauman/frazer/example/api/v1/foo"
+	"github.com/ebauman/frazer/example/middleware"
 	"github.com/ebauman/frazer/example/types"
 	"github.com/ebauman/frazer/frazer"
 )
@@ -18,6 +19,8 @@ func main() {
 	port := 8080
 
 	a := apiserver.New(&frazer.FrazerOptions{Package: "github.com/ebauman/frazer/example"})
+
+	a.RegisterMiddleware("/api/v1/foos", middleware.LogRequestMiddleware)
 
 	a.RegisterHandler(ListFoos, &frazer.HandlerOptions{
 		Path:   "/api/v1/foos",

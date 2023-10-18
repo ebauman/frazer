@@ -18,6 +18,7 @@ type APIServer struct {
 	handlers map[string]map[string]reflect.Value
 	schemas  map[string]reflect.Type
 	schemaNames map[string]string
+	middleware map[string][]reflect.Value // key is path
 	// handlers key (string) is http method as defined in https://github.com/golang/go/blob/master/src/net/http/method.go
 	router *mux.Router
 }
@@ -28,6 +29,7 @@ func New(opts *frazer.FrazerOptions, ) *APIServer {
 	handlers := make(map[string]map[string]reflect.Value)
 	a.handlers = handlers
 	a.schemas = make(map[string]reflect.Type)
+	a.middleware = make(map[string][]reflect.Value)
 	a.schemaNames = make(map[string]string)
 	if opts != nil {
 		if len(opts.Package) > 0 {
@@ -47,14 +49,14 @@ func (a *APIServer) dispatch(w http.ResponseWriter, r *http.Request) {
 	if item, exists := a.handlers[p]; exists {
 		m, _ := frazer.MethodFromString(r.Method)
 		if h, exists := item[m]; exists {
-			a.handle(w, r, h)
+			a.handle(w, r, p, h)
 		}
 	} else {
 		handleError(w, r, frazer.NewError(400, "not found"))
 	}
 }
 
-func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler reflect.Value) {
+func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, matchedPath string, handler reflect.Value) {
 	var handlerType = handler.Type()
 
 	// get any path parameters
@@ -134,6 +136,8 @@ func (a *APIServer) handle(w http.ResponseWriter, r *http.Request, handler refle
 		}
 	}()
 
+	params = Middleware(params, a.middleware[matchedPath])
+
 	results := handler.Call(params)
 	// results[0] should be interface{}, results[1] should be error
 	if len(results) < 2 {
@@ -199,4 +203,12 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 func (a *APIServer) ListenAndServe(host string, port int) error {
 	err := http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), a.router)
 	return err
+}
+
+func Middleware(params []reflect.Value, middlewares []reflect.Value) []reflect.Value {
+	for i := len(middlewares)-1; i >= 0; i-- {
+		params = middlewares[i].Call(params)
+	}
+
+	return params
 }

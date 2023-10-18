@@ -1,10 +1,13 @@
 package frazer
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 )
+
+type Middleware func(ctx context.Context, body interface{}, params ...interface{}) (context.Context, interface{}, []interface{})
 
 type HandlerOptions struct {
 	Path   string

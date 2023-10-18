@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+func (a *APIServer) RegisterMiddleware(path string, middleware frazer.Middleware) {
+	if _, exists := a.middleware[path]; !exists {
+		a.middleware[path] = []reflect.Value{reflect.ValueOf(middleware)}
+	} else {
+		a.middleware[path] = append(a.middleware[path], reflect.ValueOf(middleware))
+	}
+
+	a.router.HandleFunc(path, a.dispatch) // so middleware will process even if there's no corresponding handler
+}
+
 func (a *APIServer) RegisterHandler(handler interface{}, options *frazer.HandlerOptions) {
 	if !typecheckers.IsHandler(reflect.TypeOf(handler)) {
 		panic(fmt.Sprintf("argument %s was not a valid handler", reflect.TypeOf(handler)))
